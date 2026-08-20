@@ -45,6 +45,35 @@ export interface ImageGenerationState {
 
 export type ImageGenerationListener = (state: ImageGenerationState) => void;
 
+/** Shared progress callback — step-level updates from either generator. */
+export type ProgressCallback = (progress: { step: number; totalSteps: number }) => void;
+/** Shared preview callback — incremental pixel preview from the local generator. */
+export type PreviewCallback  = (preview:  { step: number; previewPath: string })  => void;
+
+/**
+ * Common contract implemented by both localDreamGeneratorService and
+ * cloudImageGenerator.  imageGeneratorRouter returns this interface so
+ * callers never import a concrete generator directly.
+ *
+ * Signature:
+ *   generateImage(params, onProgress?, onPreview?, signal?) → GeneratedImage
+ *
+ * - onPreview is the third slot (matches local's native callback order).
+ * - signal   is the fourth slot (optional AbortSignal for cloud cancellation;
+ *            the local generator accepts but ignores it).
+ */
+export interface ImageGenerator {
+  generateImage(
+    params:      Record<string, unknown>,
+    onProgress?: ProgressCallback,
+    onPreview?:  PreviewCallback,
+    signal?:     AbortSignal,
+  ): Promise<import('../types').GeneratedImage>;
+
+  cancel(): void;
+  isAvailable(): Promise<boolean>;
+}
+
 export interface GenerateImageParams {
   prompt: string;
   conversationId?: string;

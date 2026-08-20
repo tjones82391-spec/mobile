@@ -134,6 +134,9 @@ class CloudImageGeneratorService {
    * @param onProgress   Optional progress callback — called with synthetic progress
    *                     updates while waiting for the gateway (cloud has no step-level
    *                     progress, so we emit deterministic pings).
+   * @param onPreview    Optional preview callback — accepted for interface compatibility
+   *                     with the local generator; never called (cloud produces no
+   *                     incremental pixel previews).
    * @param signal       Optional AbortSignal; cancels the request mid-flight.
    * @returns            A GeneratedImage with a local file path.
    * @throws             On auth failure, gateway error, network error, or cancellation.
@@ -141,6 +144,7 @@ class CloudImageGeneratorService {
   async generateImage(
     params: CloudGenerateParams,
     onProgress?: (progress: { step: number; totalSteps: number }) => void,
+    _onPreview?: (preview: { step: number; previewPath: string }) => void,
     signal?: AbortSignal,
   ): Promise<GeneratedImage> {
     this._cancelled = false;

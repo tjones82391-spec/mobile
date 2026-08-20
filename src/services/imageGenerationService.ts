@@ -346,14 +346,6 @@ class ImageGenerationService {
     if (activeImageModel.backend === 'fal') {
       this.updateState({ phase: 'generating', status: 'Generating image in the cloud...' });
       const abortController = new AbortController();
-      // Wire the service-level cancel flag into the AbortController so that
-      // cancelGeneration() aborts the in-flight HTTP request immediately.
-      const cancelWatcher = setInterval(() => {
-        if (this.cancelRequested) {
-          abortController.abort();
-          clearInterval(cancelWatcher);
-        }
-      }, 200);
       const startTime = Date.now();
       try {
         const result = await cloudImageGenerator.generateImage(
@@ -372,13 +364,12 @@ class ImageGenerationService {
             if (this.cancelRequested) return;
             this.updateState({ progress: { step: progress.step, totalSteps: progress.totalSteps }, status: `Generating image in the cloud (${progress.step}/${progress.totalSteps})...` });
           },
+          undefined,
           abortController.signal,
         );
-        clearInterval(cancelWatcher);
         if (this.cancelRequested || !result?.imagePath) { this.resetState(); return null; }
         return this._saveResult(result, { params, activeImageModel, meta: { steps, guidanceScale, useOpenCL, startTime } });
       } catch (error: any) {
-        clearInterval(cancelWatcher);
         if (error instanceof CloudGenerationCancelledError) {
           this.resetState();
         } else {
@@ -513,8 +504,7 @@ class ImageGenerationService {
     if (!isInFlight(this.state.phase)) return;
     this.cancelRequested = true;
     if (this._activeBackend === 'fal') {
-      // Cloud cancellation: the AbortController watcher in _runGenerationAndSave
-      // fires within 200 ms of cancelRequested becoming true — no additional call needed.
+      cloudImageGenerator.cancel();
     } else {
       try { await onnxImageGeneratorService.cancelGeneration(); } catch { /* Ignore */ }
     }

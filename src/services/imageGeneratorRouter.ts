@@ -15,12 +15,9 @@
 
 import { localDreamGeneratorService } from './localDreamGenerator';
 import { cloudImageGenerator } from './cloudImageGenerator';
-import type { ActiveImageModel } from './imageGenerationTypes';
+import type { ActiveImageModel, ImageGenerator } from './imageGenerationTypes';
 
-/** Discriminated union of the two generator shapes used by ImageGenerationService. */
-export type ImageGenerator =
-  | typeof localDreamGeneratorService
-  | typeof cloudImageGenerator;
+export type { ImageGenerator } from './imageGenerationTypes';
 
 /**
  * Return the generator responsible for the given model.
