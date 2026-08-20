@@ -67,19 +67,90 @@ app.post('/image/generate', async c => {
     return c.json<GatewayErrorResponse>({ error: 'modelId is required' }, 400);
   }
 
-  // Numeric defaults — safe so malformed clients don't explode Fal.
+  // 2b. Field-level validation — reject out-of-range values before calling Fal.
+  if (body.prompt.length < 1 || body.prompt.length > 2000) {
+    return c.json<GatewayErrorResponse>(
+      { error: 'prompt must be between 1 and 2000 characters' },
+      400,
+    );
+  }
+
+  if (body.negativePrompt != null) {
+    if (typeof body.negativePrompt !== 'string' || body.negativePrompt.length > 2000) {
+      return c.json<GatewayErrorResponse>(
+        { error: 'negativePrompt must be a string of at most 2000 characters' },
+        400,
+      );
+    }
+  }
+
+  const steps = Number(body.steps);
+  if (!Number.isFinite(steps) || !Number.isInteger(steps) || steps < 1 || steps > 100) {
+    return c.json<GatewayErrorResponse>(
+      { error: 'steps must be an integer between 1 and 100' },
+      400,
+    );
+  }
+
+  const guidanceScale = Number(body.guidanceScale);
+  if (!Number.isFinite(guidanceScale) || guidanceScale < 1 || guidanceScale > 20) {
+    return c.json<GatewayErrorResponse>(
+      { error: 'guidanceScale must be a number between 1 and 20' },
+      400,
+    );
+  }
+
+  const width = Number(body.width);
+  if (
+    !Number.isFinite(width) ||
+    !Number.isInteger(width) ||
+    width < 64 ||
+    width > 2048 ||
+    width % 8 !== 0
+  ) {
+    return c.json<GatewayErrorResponse>(
+      { error: 'width must be an integer between 64 and 2048 and a multiple of 8' },
+      400,
+    );
+  }
+
+  const height = Number(body.height);
+  if (
+    !Number.isFinite(height) ||
+    !Number.isInteger(height) ||
+    height < 64 ||
+    height > 2048 ||
+    height % 8 !== 0
+  ) {
+    return c.json<GatewayErrorResponse>(
+      { error: 'height must be an integer between 64 and 2048 and a multiple of 8' },
+      400,
+    );
+  }
+
+  if (body.seed != null) {
+    const seed = Number(body.seed);
+    if (!Number.isFinite(seed) || !Number.isInteger(seed) || seed < 0 || seed > 2147483647) {
+      return c.json<GatewayErrorResponse>(
+        { error: 'seed must be an integer between 0 and 2147483647' },
+        400,
+      );
+    }
+  }
+
+  // 3. Build the validated request object.
   const req: GatewayImageRequest = {
     prompt: body.prompt,
     negativePrompt: body.negativePrompt,
-    steps: Number(body.steps) || 8,
-    guidanceScale: Number(body.guidanceScale) || 7.5,
-    width: Number(body.width) || 512,
-    height: Number(body.height) || 512,
+    steps,
+    guidanceScale,
+    width,
+    height,
     seed: body.seed != null ? Number(body.seed) : undefined,
     modelId: body.modelId,
   };
 
-  // 3. Call Fal (model allowlist validated inside generate()).
+  // 4. Call Fal (model allowlist validated inside generate()).
   try {
     const result: GatewayImageResponse = await generate(req, c.env);
     return c.json<GatewayImageResponse>(result, 200);
