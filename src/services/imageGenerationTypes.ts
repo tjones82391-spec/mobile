@@ -59,7 +59,8 @@ export interface ActiveImageModel {
   id: string;
   name: string;
   modelPath: string;
-  backend?: string;
+  /** 'fal' routes to the cloud gateway; all other values use the local ONNX/CoreML generator. */
+  backend?: 'fal' | string;
 }
 
 export interface RunGenerationOptions {
