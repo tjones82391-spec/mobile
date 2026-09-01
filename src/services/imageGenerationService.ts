@@ -1,5 +1,6 @@
 /** ImageGenerationService - Handles image generation independently of UI lifecycle */
 import { localDreamGeneratorService as onnxImageGeneratorService } from './localDreamGenerator';
+import { cloudImageGenerator, CloudGenerationCancelledError } from './cloudImageGenerator';
 import { activeModelService } from './activeModelService';
 import { getActiveEngineService, generateStandalone, isRemoteTextModelActive } from './engines';
 import { useAppStore, useChatStore } from '../stores';
@@ -48,6 +49,8 @@ class ImageGenerationService {
   private cancelRequested: boolean = false;
   /** Last generate request, so a failure card's Retry button can re-run it. */
   private _lastParams: GenerateImageParams | null = null;
+  /** Backend of the model currently generating (tracks local vs cloud for cancellation). */
+  private _activeBackend: string | undefined = undefined;
 
   /** Public snapshot: isGenerating is computed from phase, never stored. */
   getState(): ImageGenerationState { return { ...this.state, isGenerating: isInFlight(this.state.phase) }; }
@@ -286,6 +289,9 @@ class ImageGenerationService {
   }
 
   private async _ensureImageModelLoaded(activeImageModelId: string | null, activeImageModel: ActiveImageModel, opts: { desiredThreads: number; override?: boolean }): Promise<boolean> {
+    // Cloud (Fal) models have no local file — skip the local-load path entirely.
+    if (activeImageModel.backend === 'fal') return true;
+
     const isImageModelLoaded = await onnxImageGeneratorService.isModelLoaded();
     const loadedPath = await onnxImageGeneratorService.getLoadedModelPath();
     const loadedThreads = onnxImageGeneratorService.getLoadedThreads();
@@ -333,6 +339,50 @@ class ImageGenerationService {
 
   private async _runGenerationAndSave(opts: RunGenerationOptions): Promise<GeneratedImage | null> {
     const { params, enhancedPrompt, activeImageModel, steps, guidanceScale, imageWidth, imageHeight, useOpenCL } = opts;
+
+    // ---------------------------------------------------------------------------
+    // Cloud (Fal) path — delegate to the gateway, skip all local-model logic.
+    // ---------------------------------------------------------------------------
+    if (activeImageModel.backend === 'fal') {
+      this.updateState({ phase: 'generating', status: 'Generating image in the cloud...' });
+      const abortController = new AbortController();
+      const startTime = Date.now();
+      try {
+        const result = await cloudImageGenerator.generateImage(
+          {
+            prompt: enhancedPrompt,
+            negativePrompt: params.negativePrompt,
+            steps,
+            guidanceScale,
+            width: imageWidth,
+            height: imageHeight,
+            seed: params.seed,
+            modelId: activeImageModel.id,
+            conversationId: params.conversationId,
+          },
+          (progress) => {
+            if (this.cancelRequested) return;
+            this.updateState({ progress: { step: progress.step, totalSteps: progress.totalSteps }, status: `Generating image in the cloud (${progress.step}/${progress.totalSteps})...` });
+          },
+          undefined,
+          abortController.signal,
+        );
+        if (this.cancelRequested || !result?.imagePath) { this.resetState(); return null; }
+        return this._saveResult(result, { params, activeImageModel, meta: { steps, guidanceScale, useOpenCL, startTime } });
+      } catch (error: any) {
+        if (error instanceof CloudGenerationCancelledError) {
+          this.resetState();
+        } else {
+          logger.error('[ImageGenerationService] Cloud generation error:', error);
+          this._fail(error?.message || 'Cloud image generation failed');
+        }
+        return null;
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Local (ONNX / CoreML) path — completely unchanged.
+    // ---------------------------------------------------------------------------
 
     // The first generation for a model compiles/warms the backend and takes ~120s.
     // This is platform-agnostic: on iOS the CoreML model compiles on first use, on
@@ -403,6 +453,7 @@ class ImageGenerationService {
     }
   }
 
+
   /**
    * Generate an image. Runs independently of UI lifecycle.
    * If conversationId is provided, the result will be added as a chat message.
@@ -416,6 +467,7 @@ class ImageGenerationService {
     const { settings, activeImageModelId, downloadedImageModels } = useAppStore.getState();
     const activeImageModel = downloadedImageModels.find(m => m.id === activeImageModelId);
     if (!activeImageModel) return this._fail('No image model selected');
+    this._activeBackend = activeImageModel.backend;
 
     const steps = params.steps || settings.imageSteps || 8;
     const guidanceScale = params.guidanceScale || settings.imageGuidanceScale || DEFAULT_IMAGE_GUIDANCE;
@@ -451,7 +503,11 @@ class ImageGenerationService {
   async cancelGeneration(): Promise<void> {
     if (!isInFlight(this.state.phase)) return;
     this.cancelRequested = true;
-    try { await onnxImageGeneratorService.cancelGeneration(); } catch { /* Ignore */ }
+    if (this._activeBackend === 'fal') {
+      cloudImageGenerator.cancel();
+    } else {
+      try { await onnxImageGeneratorService.cancelGeneration(); } catch { /* Ignore */ }
+    }
     this.resetState();
   }
 

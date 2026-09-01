@@ -1,0 +1,23 @@
+{
+  "name": "offgrid-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker gateway — proxies image-generation requests to Fal.ai without exposing the Fal API key to the mobile client.",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^3.85.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

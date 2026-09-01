@@ -1,0 +1,13 @@
+name = "offgrid-gateway"
+main = "src/index.ts"
+compatibility_date = "2024-10-22"
+
+# Secrets — values are NEVER stored here.
+# Set them with:
+#   wrangler secret put FAL_API_KEY
+#   wrangler secret put GATEWAY_SECRET
+#
+# FAL_API_KEY    : Fal.ai API key — stays exclusively in the Worker secret store.
+# GATEWAY_SECRET : Shared secret the mobile app sends as a ******
+#                  This is a temporary auth mechanism; replace with JWT validation
+#                  by implementing a real verifyToken() in src/auth.ts.
